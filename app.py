@@ -9,7 +9,12 @@ from PIL import Image
 from src.fashn_vton.pipeline import TryOnPipeline
 import subprocess
 import os
+from huggingface_hub import login
 
+token = os.getenv("HF_TOKEN")
+
+if token:
+    login(token=token)
 WEIGHTS_DIR = "./weights"
 
 if not os.path.exists(WEIGHTS_DIR):
@@ -18,7 +23,7 @@ if not os.path.exists(WEIGHTS_DIR):
 if not os.path.exists(os.path.join(WEIGHTS_DIR, "model.safetensors")):
     subprocess.run(["python", "scripts/download_weights.py", "--weights-dir", WEIGHTS_DIR])
 
-    
+
 app = FastAPI(title="FASHN VTON API")
 
 OUTPUT_DIR = Path("outputs")
