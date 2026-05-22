@@ -4,3 +4,4 @@ libsm6
 libxrender1
 libxext6
 libx11-6
+libxcb1
