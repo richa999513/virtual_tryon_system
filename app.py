@@ -1,7 +1,6 @@
 from io import BytesIO
 from pathlib import Path
 import uuid
-from typing import Literal
 
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
@@ -24,11 +23,8 @@ if not os.path.exists(WEIGHTS_DIR):
 if not os.path.exists(os.path.join(WEIGHTS_DIR, "model.safetensors")):
     subprocess.run(["python", "scripts/download_weights.py", "--weights-dir", WEIGHTS_DIR])
 
-# root_path="/" fixes asset loading issues inside Hugging Face proxy/iframes
-app = FastAPI(
-    title="FASHN VTON API",
-    root_path="/"
-)
+
+app = FastAPI(title="FASHN VTON API")
 
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -53,31 +49,29 @@ def home():
 
 @app.post(
     "/tryon",
-    summary="Generate Virtual Try-On",
     description=(
         "Upload a person photo and a garment photo to generate a virtual try-on image. "
-        "\n\n**Valid Categories:**"
-        "\n* `tops`: For shirts, t-shirts, blouses, hoodies, jackets, etc."
-        "\n* `bottoms`: For pants, skirts, shorts, jeans, trousers, etc."
-        "\n* `one-pieces`: For full dresses, jumpsuits, overalls, tunics, etc."
+        "\n\n**Possible categories for the 'category' field:**"
+        "\n* `tops` - For upper body wear (shirts, t-shirts, blouses, jackets, hoodies)"
+        "\n* `bottoms` - For lower body wear (pants, shorts, skirts, jeans)"
+        "\n* `one-pieces` - For full body wear (dresses, jumpsuits, overalls)"
     )
 )
 async def tryon(
-    person_image: UploadFile = File(..., description="Image of the person standing facing forward."),
-    garment_image: UploadFile = File(..., description="Clear image of the clothing item (flat-lay or on a model)."),
-    category: Literal["tops", "bottoms", "one-pieces"] = Form(
+    person_image: UploadFile = File(...),
+    garment_image: UploadFile = File(...),
+    category: str = Form(
         ..., 
-        description="The garment category type. Must select one of: tops, bottoms, one-pieces."
+        description="The clothing category. Must be one of: tops, bottoms, one-pieces"
     ),
 ):
     try:
-        # Extra safety check for raw API requests bypassing the Swagger schema
         if category not in ["tops", "bottoms", "one-pieces"]:
             return JSONResponse(
                 status_code=400,
                 content={
                     "success": False,
-                    "error": f"Invalid category '{category}'. Must be one of: 'tops', 'bottoms', 'one-pieces'"
+                    "error": "Invalid category"
                 }
             )
 
@@ -89,21 +83,21 @@ async def tryon(
             BytesIO(await garment_image.read())
         ).convert("RGB")
 
-        # FIXED: Removed 'num_samples' parameter which is unsupported by the local python package.
-        # Adjusted num_timesteps to the model's standard balanced default (30).
+        # Keeping your exact original parameters, minus the ones causing the 500 errors
         result = pipeline(
             person_image=person_pil,
             garment_image=garment_pil,
             category=category,
             garment_photo_type="flat-lay",
-            num_timesteps=30,
+            num_timesteps=10,
             guidance_scale=1.5,
             seed=42,
-            segmentation_free=True,
         )
 
         output_filename = f"{uuid.uuid4()}.png"
+
         output_path = OUTPUT_DIR / output_filename
+
         result.images[0].save(output_path)
 
         return {
