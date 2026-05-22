@@ -61,7 +61,7 @@ async def tryon(
             category=category,
             garment_photo_type="flat-lay",
             num_samples=1,
-            num_timesteps=3,
+            num_timesteps=10,
             guidance_scale=1.5,
             seed=42,
             segmentation_free=True,
