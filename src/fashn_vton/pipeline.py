@@ -70,10 +70,15 @@ class TryOnPipeline:
 
         self.inference_dtype = torch.float32
 
-        if self.device.type == "cuda" and torch.cuda.is_bf16_supported():
+        if (
+            self.device.type == "cuda"
+            and torch.cuda.is_bf16_supported()
+        ):
             self.inference_dtype = torch.bfloat16
 
-        self.logger.info(f"Using dtype: {self.inference_dtype}")
+        self.logger.info(
+            f"Using dtype: {self.inference_dtype}"
+        )
 
         self._validate_weights()
 
@@ -82,6 +87,9 @@ class TryOnPipeline:
         self._setup_hp_model()
 
         h, w = self.tryon_model.input_shape
+
+        self.target_h = h
+        self.target_w = w
 
         max_dim = max(h, w)
 
@@ -151,20 +159,29 @@ class TryOnPipeline:
             device=str(self.device),
         )
 
-        missing, unexpected = self.tryon_model.load_state_dict(
-            state_dict,
-            strict=False,
+        missing, unexpected = (
+            self.tryon_model.load_state_dict(
+                state_dict,
+                strict=False,
+            )
         )
 
-        self.logger.info(f"Missing keys: {missing}")
-        self.logger.info(f"Unexpected keys: {unexpected}")
+        self.logger.info(
+            f"Missing keys: {missing}"
+        )
+
+        self.logger.info(
+            f"Unexpected keys: {unexpected}"
+        )
 
         self.tryon_model.to(
             self.device,
             dtype=self.inference_dtype,
         ).eval()
 
-        self.logger.info("TryOnModel loaded")
+        self.logger.info(
+            "TryOnModel loaded"
+        )
 
     def _setup_pose_model(self):
         dwpose_dir = os.path.join(
@@ -183,7 +200,9 @@ class TryOnPipeline:
             device=dwpose_device,
         )
 
-        self.logger.info("DWPose loaded")
+        self.logger.info(
+            "DWPose loaded"
+        )
 
     def _setup_hp_model(self):
         hp_device = (
@@ -196,7 +215,31 @@ class TryOnPipeline:
             device=hp_device
         )
 
-        self.logger.info("FashnHumanParser loaded")
+        self.logger.info(
+            "FashnHumanParser loaded"
+        )
+
+    def _force_exact_size(
+        self,
+        img: np.ndarray,
+        is_mask: bool = False,
+    ):
+        interpolation = (
+            cv2.INTER_NEAREST
+            if is_mask
+            else cv2.INTER_LINEAR
+        )
+
+        img = cv2.resize(
+            img,
+            (
+                self.target_w,
+                self.target_h,
+            ),
+            interpolation=interpolation,
+        )
+
+        return img
 
     @torch.inference_mode()
     def _sample(
@@ -239,7 +282,10 @@ class TryOnPipeline:
             "garment_categories": garment_categories,
         }
 
-        for step_idx, (t_curr, t_prev) in enumerate(
+        for step_idx, (
+            t_curr,
+            t_prev,
+        ) in enumerate(
             tqdm(
                 zip(
                     timesteps[:-1],
@@ -268,13 +314,15 @@ class TryOnPipeline:
             v_u = pred["v_u"]
 
             if step_idx >= (
-                num_timesteps - skip_cfg_last_n_steps
+                num_timesteps
+                - skip_cfg_last_n_steps
             ):
                 v_guided = v_c
             else:
                 v_guided = (
                     v_u
-                    + guidance_scale * (v_c - v_u)
+                    + guidance_scale
+                    * (v_c - v_u)
                 )
 
             images = images + dt * v_guided
@@ -328,7 +376,6 @@ class TryOnPipeline:
             allow_upsampling=False,
         )
 
-        # ALWAYS RGB
         person_image_np = np.array(
             person_image.convert("RGB")
         )
@@ -337,7 +384,6 @@ class TryOnPipeline:
             garment_image.convert("RGB")
         )
 
-        # DWPose expects BGR
         person_pose = self.pose_model(
             person_image_np[..., ::-1]
         )
@@ -350,10 +396,6 @@ class TryOnPipeline:
             )
         )
 
-        # IMPORTANT:
-        # grayscale=True gives 1 channel
-        # model expects total 7 channels
-        # so poses must stay single-channel
         person_pose_img = draw_pose(
             person_pose,
             person_image_np.shape[0],
@@ -376,8 +418,10 @@ class TryOnPipeline:
             garment_image_np
         )
 
-        body_coverage = CATEGORY_TO_BODY_COVERAGE.get(
-            category
+        body_coverage = (
+            CATEGORY_TO_BODY_COVERAGE.get(
+                category
+            )
         )
 
         labels_to_segment = (
@@ -391,66 +435,101 @@ class TryOnPipeline:
             for label in labels_to_segment
         ]
 
-        ca_image = create_clothing_agnostic_image(
-            img_np=person_image_np.copy(),
-            seg_pred=person_seg_pred.copy(),
-            labels_to_segment_indices=(
-                labels_to_segment_indices.copy()
-            ),
-            body_coverage=body_coverage,
-            disable_masking=True,
-            logger=self.logger,
+        ca_image = (
+            create_clothing_agnostic_image(
+                img_np=person_image_np.copy(),
+                seg_pred=person_seg_pred.copy(),
+                labels_to_segment_indices=(
+                    labels_to_segment_indices.copy()
+                ),
+                body_coverage=body_coverage,
+                disable_masking=True,
+                logger=self.logger,
+            )
         )
 
-        garment_image_processed = create_garment_image(
-            img_np=garment_image_np,
-            seg_pred=garment_seg_pred,
-            labels_to_segment_indices=(
-                labels_to_segment_indices.copy()
-            ),
-            disable_masking=(
-                garment_photo_type == "flat-lay"
-            ),
+        garment_image_processed = (
+            create_garment_image(
+                img_np=garment_image_np,
+                seg_pred=garment_seg_pred,
+                labels_to_segment_indices=(
+                    labels_to_segment_indices.copy()
+                ),
+                disable_masking=(
+                    garment_photo_type
+                    == "flat-lay"
+                ),
+            )
         )
 
+        # PAD
         ca_image = self.resize_pad_fn(
             ca_image,
             mem_padding=True,
         )
 
-        garment_image_processed = self.resize_pad_fn(
-            garment_image_processed
+        garment_image_processed = (
+            self.resize_pad_fn(
+                garment_image_processed
+            )
         )
 
         person_pose_img = self.resize_pad_fn(
             person_pose_img,
-            interpolation=cv2.INTER_NEAREST_EXACT,
+            interpolation=cv2.INTER_NEAREST,
         )
 
         garment_pose_img = self.resize_pad_fn(
             garment_pose_img,
-            interpolation=cv2.INTER_NEAREST_EXACT,
+            interpolation=cv2.INTER_NEAREST,
         )
 
-        def prepare_rgb_tensor(img: np.ndarray):
+        # FORCE EXACT SHAPE
+        ca_image = self._force_exact_size(
+            ca_image
+        )
+
+        garment_image_processed = (
+            self._force_exact_size(
+                garment_image_processed
+            )
+        )
+
+        person_pose_img = (
+            self._force_exact_size(
+                person_pose_img,
+                is_mask=True,
+            )
+        )
+
+        garment_pose_img = (
+            self._force_exact_size(
+                garment_pose_img,
+                is_mask=True,
+            )
+        )
+
+        def prepare_rgb_tensor(
+            img: np.ndarray,
+        ):
             img = img.astype(np.uint8)
 
-            if len(img.shape) == 2:
-                raise ValueError(
-                    "RGB tensor received grayscale image"
-                )
+            t = numpy_to_torch(img)
 
-            t = numpy_to_torch(img).unsqueeze(0)
+            t = t.unsqueeze(0)
 
             t = normalize_uint8_to_neg1_1(t)
 
-            t = t.to(self.device)
-
-            return t.to(
-                dtype=self.inference_dtype
+            t = t.to(
+                self.device,
+                dtype=self.inference_dtype,
             )
 
-        def prepare_gray_tensor(img: np.ndarray):
+            return t
+
+        def prepare_gray_tensor(
+            img: np.ndarray,
+        ):
             img = img.astype(np.uint8)
 
             if len(img.shape) == 3:
@@ -467,7 +546,7 @@ class TryOnPipeline:
             # -> B,C,H,W
             t = t.unsqueeze(0)
 
-            # normalize to [-1,1]
+            # normalize
             t = t / 127.5 - 1.0
 
             t = t.to(
@@ -477,7 +556,6 @@ class TryOnPipeline:
 
             return t
 
-        # RGB tensors (3 channels each)
         ca_tensor = prepare_rgb_tensor(
             ca_image
         )
@@ -486,13 +564,34 @@ class TryOnPipeline:
             garment_image_processed
         )
 
-        # GRAYSCALE tensors (1 channel each)
-        person_pose_tensor = prepare_gray_tensor(
-            person_pose_img
+        person_pose_tensor = (
+            prepare_gray_tensor(
+                person_pose_img
+            )
         )
 
-        garment_pose_tensor = prepare_gray_tensor(
-            garment_pose_img
+        garment_pose_tensor = (
+            prepare_gray_tensor(
+                garment_pose_img
+            )
+        )
+
+        self.logger.info(
+            f"CA tensor shape: {ca_tensor.shape}"
+        )
+
+        self.logger.info(
+            f"Garment tensor shape: {garment_tensor.shape}"
+        )
+
+        self.logger.info(
+            f"Person pose tensor shape: "
+            f"{person_pose_tensor.shape}"
+        )
+
+        self.logger.info(
+            f"Garment pose tensor shape: "
+            f"{garment_pose_tensor.shape}"
         )
 
         garment_categories = torch.tensor(
@@ -518,4 +617,6 @@ class TryOnPipeline:
             for img in images
         ]
 
-        return PipelineOutput(images=images)
+        return PipelineOutput(
+            images=images
+        )
