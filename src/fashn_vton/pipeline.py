@@ -10,14 +10,18 @@ os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 import cv2
 import numpy as np
 import torch
+import torch.nn.functional as F
+
 from fashn_human_parser import (
     CATEGORY_TO_BODY_COVERAGE,
     FashnHumanParser,
 )
+
 from PIL import Image
 from tqdm.auto import tqdm
 
 from .dwpose import DWposeDetector, draw_pose
+
 from .preprocessing import (
     BODY_COVERAGE_TO_FASHN_LABELS,
     FASHN_LABELS_TO_IDS,
@@ -26,7 +30,9 @@ from .preprocessing import (
     create_clothing_agnostic_image,
     create_garment_image,
 )
+
 from .tryon_mmdit import TryOnModel
+
 from .utils import (
     get_dummy_dw_keypoints,
     get_rf_schedule,
@@ -44,6 +50,7 @@ class PipelineOutput:
 
 
 class TryOnPipeline:
+
     CATEGORY_TO_LABEL = {
         "tops": 1,
         "bottoms": 2,
@@ -56,17 +63,24 @@ class TryOnPipeline:
         device: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ):
+
         self.weights_dir = os.path.abspath(weights_dir)
 
-        self.logger = logger or setup_logger("TryOnPipeline")
+        self.logger = logger or setup_logger(
+            "TryOnPipeline"
+        )
 
         self.device = torch.device(
             device if device else (
-                "cuda" if torch.cuda.is_available() else "cpu"
+                "cuda"
+                if torch.cuda.is_available()
+                else "cpu"
             )
         )
 
-        self.logger.info(f"Using device: {self.device}")
+        self.logger.info(
+            f"Using device: {self.device}"
+        )
 
         self.inference_dtype = torch.float32
 
@@ -88,8 +102,8 @@ class TryOnPipeline:
 
         h, w = self.tryon_model.input_shape
 
-        self.target_h = h
-        self.target_w = w
+        self.target_h = 768
+        self.target_w = 512
 
         max_dim = max(h, w)
 
@@ -100,11 +114,12 @@ class TryOnPipeline:
         )
 
         self.resize_pad_fn = ResizePad(
-            (w, h),
+            (self.target_w, self.target_h),
             backend="opencv",
         )
 
     def _validate_weights(self):
+
         tryon_path = os.path.join(
             self.weights_dir,
             "model.safetensors",
@@ -139,10 +154,13 @@ class TryOnPipeline:
         if missing:
             raise FileNotFoundError(
                 "Missing model weights:\n"
-                + "\n".join(f"  - {p}" for p in missing)
+                + "\n".join(
+                    f"  - {p}" for p in missing
+                )
             )
 
     def _setup_tryon_model(self):
+
         model_path = os.path.join(
             self.weights_dir,
             "model.safetensors",
@@ -184,6 +202,7 @@ class TryOnPipeline:
         )
 
     def _setup_pose_model(self):
+
         dwpose_dir = os.path.join(
             self.weights_dir,
             "dwpose",
@@ -205,6 +224,7 @@ class TryOnPipeline:
         )
 
     def _setup_hp_model(self):
+
         hp_device = (
             "cuda"
             if self.device.type == "cuda"
@@ -219,11 +239,12 @@ class TryOnPipeline:
             "FashnHumanParser loaded"
         )
 
-    def _force_exact_size(
+    def _resize_exact(
         self,
         img: np.ndarray,
         is_mask: bool = False,
     ):
+
         interpolation = (
             cv2.INTER_NEAREST
             if is_mask
@@ -241,6 +262,77 @@ class TryOnPipeline:
 
         return img
 
+    def _prepare_rgb_tensor(
+        self,
+        img: np.ndarray,
+    ):
+
+        img = self._resize_exact(img)
+
+        img = img.astype(np.uint8)
+
+        t = numpy_to_torch(img)
+
+        t = t.unsqueeze(0)
+
+        t = normalize_uint8_to_neg1_1(t)
+
+        t = t.to(
+            self.device,
+            dtype=self.inference_dtype,
+        )
+
+        return t
+
+    def _prepare_gray_tensor(
+        self,
+        img: np.ndarray,
+    ):
+
+        img = self._resize_exact(
+            img,
+            is_mask=True,
+        )
+
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(
+                img,
+                cv2.COLOR_RGB2GRAY,
+            )
+
+        img = img.astype(np.float32)
+
+        img = img / 127.5 - 1.0
+
+        t = torch.from_numpy(img)
+
+        t = t.unsqueeze(0)
+        t = t.unsqueeze(0)
+
+        t = t.to(
+            self.device,
+            dtype=self.inference_dtype,
+        )
+
+        return t
+
+    def _fix_tensor_size(
+        self,
+        tensor: torch.Tensor,
+    ):
+
+        tensor = F.interpolate(
+            tensor,
+            size=(
+                self.target_h,
+                self.target_w,
+            ),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        return tensor
+
     @torch.inference_mode()
     def _sample(
         self,
@@ -250,12 +342,14 @@ class TryOnPipeline:
         person_poses: torch.Tensor,
         garment_poses: torch.Tensor,
         garment_categories: torch.Tensor,
-        num_timesteps: int = 20,
+        num_timesteps: int = 10,
         time_shift_mu: float = 1.5,
         guidance_scale: float = 1.5,
         skip_cfg_last_n_steps: int = 1,
     ):
+
         device = ca_images.device
+
         dtype = ca_images.dtype
 
         c, h, w = (
@@ -295,6 +389,7 @@ class TryOnPipeline:
                 desc="Sampling",
             )
         ):
+
             dt = t_prev - t_curr
 
             t_vec = torch.full(
@@ -312,6 +407,23 @@ class TryOnPipeline:
 
             v_c = pred["v_c"]
             v_u = pred["v_u"]
+
+            # CRITICAL FIX
+            if v_c.shape != images.shape:
+                v_c = F.interpolate(
+                    v_c,
+                    size=images.shape[-2:],
+                    mode="bilinear",
+                    align_corners=False,
+                )
+
+            if v_u.shape != images.shape:
+                v_u = F.interpolate(
+                    v_u,
+                    size=images.shape[-2:],
+                    mode="bilinear",
+                    align_corners=False,
+                )
 
             if step_idx >= (
                 num_timesteps
@@ -353,16 +465,13 @@ class TryOnPipeline:
             "model",
             "flat-lay",
         ] = "model",
-        num_timesteps: int = 20,
+        num_timesteps: int = 10,
         guidance_scale: float = 1.5,
         skip_cfg_last_n_steps: int = 1,
         seed: int = 42,
     ) -> PipelineOutput:
 
         torch.manual_seed(seed)
-
-        if self.device.type == "cuda":
-            torch.cuda.manual_seed_all(seed)
 
         np.random.seed(seed)
 
@@ -462,117 +571,46 @@ class TryOnPipeline:
             )
         )
 
-        # PAD
-        ca_image = self.resize_pad_fn(
-            ca_image,
-            mem_padding=True,
-        )
-
-        garment_image_processed = (
-            self.resize_pad_fn(
-                garment_image_processed
-            )
-        )
-
-        person_pose_img = self.resize_pad_fn(
-            person_pose_img,
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        garment_pose_img = self.resize_pad_fn(
-            garment_pose_img,
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        # FORCE EXACT SHAPE
-        ca_image = self._force_exact_size(
+        ca_tensor = self._prepare_rgb_tensor(
             ca_image
         )
 
-        garment_image_processed = (
-            self._force_exact_size(
+        garment_tensor = (
+            self._prepare_rgb_tensor(
                 garment_image_processed
             )
-        )
-
-        person_pose_img = (
-            self._force_exact_size(
-                person_pose_img,
-                is_mask=True,
-            )
-        )
-
-        garment_pose_img = (
-            self._force_exact_size(
-                garment_pose_img,
-                is_mask=True,
-            )
-        )
-
-        def prepare_rgb_tensor(
-            img: np.ndarray,
-        ):
-            img = img.astype(np.uint8)
-
-            t = numpy_to_torch(img)
-
-            t = t.unsqueeze(0)
-
-            t = normalize_uint8_to_neg1_1(t)
-
-            t = t.to(
-                self.device,
-                dtype=self.inference_dtype,
-            )
-
-            return t
-
-        def prepare_gray_tensor(
-            img: np.ndarray,
-        ):
-            img = img.astype(np.uint8)
-
-            if len(img.shape) == 3:
-                img = cv2.cvtColor(
-                    img,
-                    cv2.COLOR_RGB2GRAY,
-                )
-
-            t = torch.from_numpy(img).float()
-
-            # H,W -> 1,H,W
-            t = t.unsqueeze(0)
-
-            # -> B,C,H,W
-            t = t.unsqueeze(0)
-
-            # normalize
-            t = t / 127.5 - 1.0
-
-            t = t.to(
-                self.device,
-                dtype=self.inference_dtype,
-            )
-
-            return t
-
-        ca_tensor = prepare_rgb_tensor(
-            ca_image
-        )
-
-        garment_tensor = prepare_rgb_tensor(
-            garment_image_processed
         )
 
         person_pose_tensor = (
-            prepare_gray_tensor(
+            self._prepare_gray_tensor(
                 person_pose_img
             )
         )
 
         garment_pose_tensor = (
-            prepare_gray_tensor(
+            self._prepare_gray_tensor(
                 garment_pose_img
+            )
+        )
+
+        # FINAL SAFETY FIX
+        ca_tensor = self._fix_tensor_size(
+            ca_tensor
+        )
+
+        garment_tensor = self._fix_tensor_size(
+            garment_tensor
+        )
+
+        person_pose_tensor = (
+            self._fix_tensor_size(
+                person_pose_tensor
+            )
+        )
+
+        garment_pose_tensor = (
+            self._fix_tensor_size(
+                garment_pose_tensor
             )
         )
 
@@ -581,7 +619,8 @@ class TryOnPipeline:
         )
 
         self.logger.info(
-            f"Garment tensor shape: {garment_tensor.shape}"
+            f"Garment tensor shape: "
+            f"{garment_tensor.shape}"
         )
 
         self.logger.info(
@@ -611,11 +650,6 @@ class TryOnPipeline:
                 skip_cfg_last_n_steps
             ),
         )
-
-        images = [
-            self.resize_pad_fn.unpad(img)
-            for img in images
-        ]
 
         return PipelineOutput(
             images=images
