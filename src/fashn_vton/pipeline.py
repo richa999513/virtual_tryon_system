@@ -328,6 +328,7 @@ class TryOnPipeline:
             allow_upsampling=False,
         )
 
+        # ALWAYS RGB
         person_image_np = np.array(
             person_image.convert("RGB")
         )
@@ -336,6 +337,7 @@ class TryOnPipeline:
             garment_image.convert("RGB")
         )
 
+        # DWPose expects BGR
         person_pose = self.pose_model(
             person_image_np[..., ::-1]
         )
@@ -348,18 +350,22 @@ class TryOnPipeline:
             )
         )
 
+        # IMPORTANT:
+        # grayscale=True gives 1 channel
+        # model expects total 7 channels
+        # so poses must stay single-channel
         person_pose_img = draw_pose(
             person_pose,
             person_image_np.shape[0],
             person_image_np.shape[1],
-            grayscale=False,
+            grayscale=True,
         )
 
         garment_pose_img = draw_pose(
             garment_pose,
             garment_image_np.shape[0],
             garment_image_np.shape[1],
-            grayscale=False,
+            grayscale=True,
         )
 
         person_seg_pred = self.hp_model.predict(
@@ -426,21 +432,12 @@ class TryOnPipeline:
             interpolation=cv2.INTER_NEAREST_EXACT,
         )
 
-        def prepare_tensor(img: np.ndarray):
+        def prepare_rgb_tensor(img: np.ndarray):
             img = img.astype(np.uint8)
 
-            # Convert grayscale to RGB
             if len(img.shape) == 2:
-                img = np.stack(
-                    [img] * 3,
-                    axis=-1,
-                )
-
-            # Convert single channel to RGB
-            if img.shape[-1] == 1:
-                img = np.concatenate(
-                    [img] * 3,
-                    axis=-1,
+                raise ValueError(
+                    "RGB tensor received grayscale image"
                 )
 
             t = numpy_to_torch(img).unsqueeze(0)
@@ -453,19 +450,48 @@ class TryOnPipeline:
                 dtype=self.inference_dtype
             )
 
-        ca_tensor = prepare_tensor(
+        def prepare_gray_tensor(img: np.ndarray):
+            img = img.astype(np.uint8)
+
+            if len(img.shape) == 3:
+                img = cv2.cvtColor(
+                    img,
+                    cv2.COLOR_RGB2GRAY,
+                )
+
+            t = torch.from_numpy(img).float()
+
+            # H,W -> 1,H,W
+            t = t.unsqueeze(0)
+
+            # -> B,C,H,W
+            t = t.unsqueeze(0)
+
+            # normalize to [-1,1]
+            t = t / 127.5 - 1.0
+
+            t = t.to(
+                self.device,
+                dtype=self.inference_dtype,
+            )
+
+            return t
+
+        # RGB tensors (3 channels each)
+        ca_tensor = prepare_rgb_tensor(
             ca_image
         )
 
-        garment_tensor = prepare_tensor(
+        garment_tensor = prepare_rgb_tensor(
             garment_image_processed
         )
 
-        person_pose_tensor = prepare_tensor(
+        # GRAYSCALE tensors (1 channel each)
+        person_pose_tensor = prepare_gray_tensor(
             person_pose_img
         )
 
-        garment_pose_tensor = prepare_tensor(
+        garment_pose_tensor = prepare_gray_tensor(
             garment_pose_img
         )
 
