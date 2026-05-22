@@ -7,7 +7,18 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 
 from src.fashn_vton.pipeline import TryOnPipeline
+import subprocess
+import os
 
+WEIGHTS_DIR = "./weights"
+
+if not os.path.exists(WEIGHTS_DIR):
+    os.makedirs(WEIGHTS_DIR, exist_ok=True)
+
+if not os.path.exists(os.path.join(WEIGHTS_DIR, "model.safetensors")):
+    subprocess.run(["python", "scripts/download_weights.py", "--weights-dir", WEIGHTS_DIR])
+
+    
 app = FastAPI(title="FASHN VTON API")
 
 OUTPUT_DIR = Path("outputs")
