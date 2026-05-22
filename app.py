@@ -1,6 +1,7 @@
 from io import BytesIO
 from pathlib import Path
 import uuid
+from typing import Literal
 
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
@@ -23,8 +24,11 @@ if not os.path.exists(WEIGHTS_DIR):
 if not os.path.exists(os.path.join(WEIGHTS_DIR, "model.safetensors")):
     subprocess.run(["python", "scripts/download_weights.py", "--weights-dir", WEIGHTS_DIR])
 
-
-app = FastAPI(title="FASHN VTON API")
+# root_path="/" fixes asset loading issues inside Hugging Face proxy/iframes
+app = FastAPI(
+    title="FASHN VTON API",
+    root_path="/"
+)
 
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -47,19 +51,33 @@ def home():
     }
 
 
-@app.post("/tryon")
+@app.post(
+    "/tryon",
+    summary="Generate Virtual Try-On",
+    description=(
+        "Upload a person photo and a garment photo to generate a virtual try-on image. "
+        "\n\n**Valid Categories:**"
+        "\n* `tops`: For shirts, t-shirts, blouses, jackets, etc."
+        "\n* `bottoms`: For pants, skirts, shorts, jeans, etc."
+        "\n* `one-pieces`: For full dresses, jumpsuits, overalls, etc."
+    )
+)
 async def tryon(
-    person_image: UploadFile = File(...),
-    garment_image: UploadFile = File(...),
-    category: str = Form(...),
+    person_image: UploadFile = File(..., description="Image of the person standing facing forward."),
+    garm_image: UploadFile = File(..., description="Clear flat-lay image of the clothing item."),
+    category: Literal["tops", "bottoms", "one-pieces"] = Form(
+        ..., 
+        description="The garment category type. Must select one of: tops, bottoms, one-pieces."
+    ),
 ):
     try:
+        # Extra safety check (Literal handles this in Swagger, but good for raw API requests)
         if category not in ["tops", "bottoms", "one-pieces"]:
             return JSONResponse(
                 status_code=400,
                 content={
                     "success": False,
-                    "error": "Invalid category"
+                    "error": f"Invalid category '{category}'. Must be one of: 'tops', 'bottoms', 'one-pieces'"
                 }
             )
 
@@ -68,7 +86,7 @@ async def tryon(
         ).convert("RGB")
 
         garment_pil = Image.open(
-            BytesIO(await garment_image.read())
+            BytesIO(await garm_image.read())
         ).convert("RGB")
 
         result = pipeline(
@@ -84,9 +102,7 @@ async def tryon(
         )
 
         output_filename = f"{uuid.uuid4()}.png"
-
         output_path = OUTPUT_DIR / output_filename
-
         result.images[0].save(output_path)
 
         return {
