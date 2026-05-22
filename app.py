@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
-from PIL import Image
+from PIL import Image, ImageOps  # Added ImageOps to handle EXIF rotation data cleanly
 
 from src.fashn_vton.pipeline import TryOnPipeline
 import subprocess
@@ -75,13 +75,12 @@ async def tryon(
                 }
             )
 
-        person_pil = Image.open(
-            BytesIO(await person_image.read())
-        ).convert("RGB")
+        # Read, fix hidden EXIF rotations, and force standard 3-channel RGB format
+        person_raw = Image.open(BytesIO(await person_image.read()))
+        person_pil = ImageOps.exif_transpose(person_raw).convert("RGB")
 
-        garment_pil = Image.open(
-            BytesIO(await garment_image.read())
-        ).convert("RGB")
+        garment_raw = Image.open(BytesIO(await garment_image.read()))
+        garment_pil = ImageOps.exif_transpose(garment_raw).convert("RGB")
 
         # Keeping your exact original parameters, minus the ones causing the 500 errors
         result = pipeline(
