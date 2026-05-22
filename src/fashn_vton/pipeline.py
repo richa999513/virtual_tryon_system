@@ -5,7 +5,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import List, Literal, Optional
-
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 import cv2
 import numpy as np
 import torch
