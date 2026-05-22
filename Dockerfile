@@ -1,11 +1,10 @@
 FROM python:3.10-slim
 
-# Create a non-root user that Hugging Face expects (UID 1000)
+# 1. Create the user and the app directory
 RUN useradd -m -u 1000 user
-
 WORKDIR /app
 
-# Switch to root to install system dependencies
+# 2. Switch to root to install system libs AND set folder permissions
 USER root
 
 RUN apt-get update && apt-get install -y \
@@ -23,16 +22,18 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon-x11-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and fix permissions so the 'user' can access them
-COPY --chown=user:user requirements.txt .
+# Fix permission: Give the 'user' ownership of the /app directory
+RUN chown user:user /app
 
-# Switch to the non-root user for installing packages and running the app
+# 3. Switch to the user for the rest of the build
 USER user
 ENV PATH="/home/user/.local/bin:${PATH}"
 
+# Copy requirements and install
+COPY --chown=user:user requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Copy the rest of your app code and ensure correct ownership
+# Copy the rest of the code
 COPY --chown=user:user . .
 
 EXPOSE 7860
