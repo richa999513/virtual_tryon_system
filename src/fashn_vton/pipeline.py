@@ -465,7 +465,7 @@ class TryOnPipeline:
             "model",
             "flat-lay",
         ] = "model",
-        num_timesteps: int = 10,
+        num_timesteps: int = 2,
         guidance_scale: float = 1.5,
         skip_cfg_last_n_steps: int = 1,
         seed: int = 42,
