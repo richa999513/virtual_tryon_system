@@ -95,15 +95,5 @@ test_outputs_*/
 # uv
 uv.lock
 
-# Images
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
-*.bmp
-*.tiff
-*.tif
-
 
 /.env

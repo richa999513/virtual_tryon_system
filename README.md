@@ -40,27 +40,27 @@ The project includes additional preprocessing, garment handling, masking strateg
 
 ### Example 1
 
-| Person Image                    | Garment Image                    | Generated Output                |
-| ------------------------------- | -------------------------------- | ------------------------------- |
-| ![](assets/example1_person.jpg) | ![](assets/example1_garment.jpg) | ![](assets/example1_output.webp) |
+| Person Image | Garment Image | Generated Output |
+|-------------|--------------|------------------|
+| <img src="assets/example1_person.jpg" width="250"> | <img src="assets/example1_garment.jpg" width="250"> | <img src="assets/example1_output.webp" width="250"> |
 
 ### Example 2
 
-| Person Image                    | Garment Image                    | Generated Output                |
-| ------------------------------- | -------------------------------- | ------------------------------- |
-| ![](assets/example2_person.jpg) | ![](assets/example2_garment.jpg) | ![](assets/example2_output.jpg) |
+| Person Image | Garment Image | Generated Output |
+|-------------|--------------|------------------|
+| <img src="assets/example2_person.jpg" width="250"> | <img src="assets/example2_garment.jpg" width="250"> | <img src="assets/example2_output.jpg" width="250"> |
 
 ### Example 3
 
-| Person Image                    | Garment Image                    | Generated Output                |
-| ------------------------------- | -------------------------------- | ------------------------------- |
-| ![](assets/example2_person.jpg) | ![](assets/example3_garment.jpg) | ![](assets/example3_output.png) |
+| Person Image | Garment Image | Generated Output |
+|-------------|--------------|------------------|
+| <img src="assets/example2_person.jpg" width="250"> | <img src="assets/example3_garment.jpg" width="250"> | <img src="assets/example3_output.png" width="250"> |
 
 ### Example 4
 
-| Person Image                    | Garment Image                    | Generated Output                |
-| ------------------------------- | -------------------------------- | ------------------------------- |
-| ![](assets/example3_person.jpg) | ![](assets/example4_garment.jpg) | ![](assets/example4_output.jpg) |
+| Person Image | Garment Image | Generated Output |
+|-------------|--------------|------------------|
+| <img src="assets/example3_person.jpg" width="250"> | <img src="assets/example4_garment.jpg" width="250"> | <img src="assets/example4_output.webp" width="250"> |
 
 ---
 
