@@ -1,23 +1,20 @@
+# Core ML & Deep Learning
 torch>=2.0.0
 torchvision>=0.15.0
-
 safetensors>=0.3.0
-huggingface_hub>=0.20.0
-
-pillow>=9.0.0
-numpy>=1.21.0
-
-opencv-python-headless>=4.5.0
-
-tqdm>=4.65.0
 einops>=0.6.0
-
 onnxruntime-gpu>=1.14.0
 
+# Ecosystem & Utilities
+huggingface_hub>=0.20.0
+fashn-human-parser>=0.1.1
+tqdm>=4.65.0
+
+# Data Processing & Visualization (Numpy pinned to avoid v2 breaking changes)
+numpy>=1.21.0,<2.0.0
+pillow>=9.0.0
+opencv-python>=4.5.0
 matplotlib>=3.5.0
 
-fashn-human-parser>=0.1.1
-
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-python-multipart>=0.0.9
+# Gradio interface
+gradio>=4.44.0

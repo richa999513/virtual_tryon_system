@@ -31,4 +31,14 @@ def load_checkpoint(checkpoint_path: str, device: str = "cpu") -> dict:
         else:
             raise ValueError(f"Unknown checkpoint file format: {checkpoint_path}")
 
+    # Check if it looks like a HuggingFace repo ID
+    if "/" in checkpoint_path and not checkpoint_path.endswith((".pt", ".pth", ".safetensors")):
+        from huggingface_hub import hf_hub_download
+
+        local_path = hf_hub_download(
+            repo_id=checkpoint_path,
+            filename="model.safetensors",
+        )
+        return load_file(local_path, device=device)
+
     raise ValueError(f"Checkpoint not found: {checkpoint_path}")

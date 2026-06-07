@@ -367,7 +367,7 @@ def apply_conditional_dropout(tensor, mask, null_tensor=None):
 class TryOnModel(nn.Module):
     def __init__(
         self,
-        input_shape: Tuple[int] = (768, 512),
+        input_shape: Tuple[int] = (864, 576),
         hidden_size: int = 1280,
         n_heads=10,
         double_blocks_depth: int = 8,
@@ -390,6 +390,9 @@ class TryOnModel(nn.Module):
 
         # category labels (tops, bottoms, one-pieces)
         self.y_embedder = nn.Embedding(n_classes + 1, hidden_size) if n_classes > 0 else None  # +1 for null class
+
+        # guidance embeddings for guidance distillation
+        self.guidance_embedder = TimestepEmbedder(hidden_size=hidden_size) if guidance_embed else None
 
         # positional embeddings
         pe_dim = hidden_size // n_heads
@@ -414,7 +417,9 @@ class TryOnModel(nn.Module):
             self.x_patch_mixer = nn.ModuleList(
                 [SingleStreamBlock(hidden_size, n_heads, mlp_ratio=mlp_ratio) for _ in range(patch_mixer_depth)]
             )
-    
+            # Buffer kept for checkpoint compatibility (not used at inference)
+            self.register_buffer("patch_mixer_token", torch.zeros(1, 1, channels_in * self.patch_size**2))
+
         # core MMDiT
         self.double_blocks = nn.ModuleList(
             [
@@ -479,6 +484,7 @@ class TryOnModel(nn.Module):
         person_poses,
         garment_poses,
         mask: Optional[torch.Tensor] = None,
+        guidance: Optional[torch.Tensor] = None,
         garment_categories: Optional[torch.Tensor] = None,
     ):
         ###################### CLASSIFIER FREE GUIDANCE ######################
@@ -506,6 +512,10 @@ class TryOnModel(nn.Module):
         ###################### TIME & MODULATION ######################
 
         t = self.t_embedder(times)
+
+        if exists(self.guidance_embedder):
+            assert exists(guidance), "Guidance scale required for guidance distilled model"
+            t = t + self.guidance_embedder(guidance)
 
         if exists(self.y_embedder):
             assert exists(garment_categories), "Category labels required for y_embedder"
