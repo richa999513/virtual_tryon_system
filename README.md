@@ -42,25 +42,25 @@ The project includes additional preprocessing, garment handling, masking strateg
 
 | Person Image | Garment Image | Generated Output |
 |-------------|--------------|------------------|
-| <img src="assets/example1_person.jpg" width="250"> | <img src="assets/example1_garment.jpg" width="250"> | <img src="assets/example1_output.webp" width="250"> |
+| <img src="assets/example1_person.jpg" height="400" width="250"> | <img src="assets/example1_garment.jpg"  height="400" width="250"> | <img src="assets/example1_output.webp"  height="400" width="250"> |
 
 ### Example 2
 
 | Person Image | Garment Image | Generated Output |
 |-------------|--------------|------------------|
-| <img src="assets/example2_person.jpg" width="250"> | <img src="assets/example2_garment.jpg" width="250"> | <img src="assets/example2_output.jpg" width="250"> |
+| <img src="assets/example2_person.jpg"  height="400" width="250"> | <img src="assets/example2_garment.jpg"  height="400" width="250"> | <img src="assets/example2_output.jpg"  height="400" width="250"> |
 
 ### Example 3
 
 | Person Image | Garment Image | Generated Output |
 |-------------|--------------|------------------|
-| <img src="assets/example2_person.jpg" width="250"> | <img src="assets/example3_garment.jpg" width="250"> | <img src="assets/example3_output.png" width="250"> |
+| <img src="assets/example2_person.jpg"  height="400" width="250"> | <img src="assets/example3_garment.jpg"  height="400" width="250"> | <img src="assets/example3_output.png"  height="400" width="250"> |
 
 ### Example 4
 
 | Person Image | Garment Image | Generated Output |
 |-------------|--------------|------------------|
-| <img src="assets/example3_person.jpg" width="250"> | <img src="assets/example4_garment.jpg" width="250"> | <img src="assets/example4_output.webp" width="250"> |
+| <img src="assets/example3_person.jpg"  height="400" width="250"> | <img src="assets/example4_garment.jpg"  height="400" width="250"> | <img src="assets/example4_output.webp"  height="400" width="250"> |
 
 ---
 
